@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blue Block: Laser Escape</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&display=swap');
+    
+    :root {
+      --safe-zone-color: rgba(0, 255, 0, 0.15);
+      --player-color: #4285F4;
+      --exit-color: #34A853;
+      --laser-color: #EA4335;
+      --camera-color: #FBBC05;
+      --background-dark: #121212;
+      --background-light: #1E1E1E;
+      --text-color: #FFFFFF;
+      --text-glow: 0 0 10px rgba(255, 255, 255, 0.7);
+      --gate-color: #FBBC05;
+    }
+    
+    * {
+      box-sizing: border-box;
+      user-select: none;
+    }
+    
+    body {
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background-color: var(--background-dark);
+      overflow: hidden;
+      font-family: 'Orbitron', sans-serif;
+      color: var(--text-color);
+      text-shadow: var(--text-glow);
+    }
+
+    #game-wrapper {
+      display: flex;
+      position: relative;
+      box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    #safe-section {
+      width: 220px;
+      height: 600px;
+      background-color: var(--safe-zone-color);
+      border-right: 2px solid rgba(0, 255, 0, 0.5);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 20px;
+    }
+
+    #game-container {
+      position: relative;
+      width: 800px;
+      height: 600px;
+      background: 
+        radial-gradient(circle at center, var(--background-light) 0%, var(--background-dark) 100%),
+        repeating-linear-gradient(
+          45deg,
+          rgba(30, 30, 30, 0.3),
+          rgba(30, 30, 30, 0.3) 2px,
+          transparent 2px,
+          transparent 4px
+        );
+      overflow: hidden;
+    }
+
+    #blue-block {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      background-color: var(--player-color);
+      border-radius: 5px;
+      box-shadow: 0 0 15px rgba(66, 133, 244, 0.7);
+      transition: transform 0.08s ease-out;
+      z-index: 10;
+    }
+
+    #blue-block::after {
+      content: "";
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      background-color: rgba(255, 255, 255, 0.8);
+      border-radius: 50%;
+      top: 5px;
+      left: 5px;
+    }
+
+    #exit {
+      position: absolute;
+      width: 60px;
+      height: 60px;
+      background-color: var(--exit-color);
+      border-radius: 50%;
+      box-shadow: 0 0 20px rgba(52, 168, 83, 0.7);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 5;
+      transition: all 0.3s;
+    }
+
+    #exit.disabled {
+      opacity: 0.5;
+      box-shadow: 0 0 10px rgba(52, 168, 83, 0.3);
+      filter: grayscale(50%);
+    }
+
+    #exit:hover {
+      transform: scale(1.1);
+    }
+
+    #exit::before {
+      content: "✓";
+      font-size: 30px;
+      color: white;
+    }
+
+    .laser {
+      position: absolute;
+      z-index: 3;
+    }
+
+    .vertical-laser {
+      width: 4px;
+      height: 100%;
+      background-color: var(--laser-color);
+      box-shadow: 0 0 10px var(--laser-color);
+    }
+
+    .horizontal-laser {
+      width: 100%;
+      height: 4px;
+      background-color: var(--laser-color);
+      box-shadow: 0 0 10px var(--laser-color);
+    }
+
+    .rotating-laser {
+      width: 4px;
+      height: 150%;
+      background-color: var(--laser-color);
+      box-shadow: 0 0 10px var(--laser-color);
+      transform-origin: center;
+    }
+
+    .laser-gate {
+      position: absolute;
+      width: 60px;
+      height: 60px;
+      border: 3px solid var(--gate-color);
+      border-radius: 50%;
+      box-shadow: 0 0 15px var(--gate-color);
+      z-index: 4;
+      animation: pulse 2s infinite;
+    }
+
+    #hud {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      display: flex;
+      gap: 20px;
+      z-index: 20;
+    }
+
+    .hud-item {
+      background-color: rgba(0, 0, 0, 0.7);
+      padding: 8px 15px;
+      border-radius: 5px;
+      font-size: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+    }
+
+    #controls {
+      background-color: rgba(0, 0, 0, 0.5);
+      padding: 15px;
+      border-radius: 5px;
+      font-size: 14px;
+      margin-top: auto;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    #controls h3 {
+      margin-top: 0;
+      color: var(--player-color);
+    }
+
+    #controls p {
+      margin: 8px 0;
+    }
+
+    #level-complete-modal, #game-complete-modal {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.85);
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      backdrop-filter: blur(5px);
+    }
+
+    .modal-content {
+      background: linear-gradient(145deg, #1a1a1a, #2d2d2d);
+      padding: 40px;
+      border-radius: 15px;
+      text-align: center;
+      max-width: 500px;
+      border: 2px solid var(--player-color);
+      box-shadow: 0 0 30px rgba(66, 133, 244, 0.5);
+    }
+
+    .modal-content h2 {
+      color: var(--player-color);
+      font-size: 28px;
+      margin-top: 0;
+    }
+
+    button {
+      background: linear-gradient(145deg, #4285F4, #3367D6);
+      color: white;
+      border: none;
+      padding: 12px 25px;
+      margin-top: 20px;
+      border-radius: 5px;
+      font-family: 'Orbitron', sans-serif;
+      cursor: pointer;
+      transition: all 0.3s;
+      font-size: 16px;
+      text-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 7px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .particle {
+      position: absolute;
+      width: 5px;
+      height: 5px;
+      background-color: white;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 15;
+    }
+
+    #pause-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.7);
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 50;
+      color: var(--player-color);
+      font-size: 36px;
+      text-align: center;
+    }
+
+    #collectibles-container {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      display: flex;
+      gap: 10px;
+      z-index: 20;
+    }
+
+    .collectible {
+      width: 30px;
+      height: 30px;
+      background-color: gold;
+      border-radius: 50%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 14px;
+      font-weight: bold;
+      box-shadow: 0 0 10px rgba(255, 215, 0, 0.7);
+    }
+
+    .collectible.empty {
+      background-color: rgba(255, 255, 255, 0.1);
+      box-shadow: none;
+    }
+
+    #tutorial-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.9);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 200;
+      padding: 30px;
+      text-align: center;
+    }
+
+    #tutorial-content {
+      max-width: 600px;
+      background: rgba(30, 30, 30, 0.9);
+      padding: 30px;
+      border-radius: 10px;
+      border: 2px solid var(--player-color);
+    }
+
+    #tutorial-content h2 {
+      color: var(--player-color);
+    }
+
+    .tutorial-section {
+      margin-bottom: 20px;
+    }
+
+    .tutorial-controls {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      margin: 10px 0;
+    }
+
+    .key {
+      background: rgba(0, 0, 0, 0.5);
+      padding: 8px 15px;
+      border-radius: 5px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      min-width: 40px;
+    }
+
+    .collectible-star {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      background-color: gold;
+      clip-path: polygon(
+        50% 0%,
+        61% 35%,
+        98% 35%,
+        68% 57%,
+        79% 91%,
+        50% 70%,
+        21% 91%,
+        32% 57%,
+        2% 35%,
+        39% 35%
+      );
+      z-index: 6;
+      animation: float 2s infinite ease-in-out;
+    }
+
+    @keyframes moveVertical {
+      0% { top: -100%; }
+      100% { top: 100%; }
+    }
+
+    @keyframes moveHorizontal {
+      0% { left: -100%; }
+      100% { left: 100%; }
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 0.8; }
+      50% { transform: scale(1.1); opacity: 1; }
+      100% { transform: scale(1); opacity: 0.8; }
+    }
+
+    @keyframes rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes float {
+      0% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+      100% { transform: translateY(0); }
+    }
+
+    @keyframes flicker {
+      0% { opacity: 0.7; }
+      50% { opacity: 1; }
+      100% { opacity: 0.7; }
+    }
+  </style>
+</head>
+<body>
+  <div id="game-wrapper">
+    <div id="safe-section">
+      <div id="hud">
+        <div class="hud-item" id="level-display">LEVEL: 1</div>
+        <div class="hud-item" id="time-display">TIME: 0.00</div>
+        <div class="hud-item" id="deaths-display">DEATHS: 0</div>
+        <div class="hud-item" id="score-display">SCORE: 0</div>
+      </div>
+      
+      <div id="controls">
+        <h3>CONTROLS</h3>
+        <p>↑ ↓ ← → : Move Player</p>
+        <p>P : Pause/Unpause</p>
+        <p>R : Restart Level</p>
+        <p>H : Show Help</p>
+      </div>
+    </div>
+    
+    <div id="game-container" tabindex="0">
+      <div id="blue-block"></div>
+      <div id="exit" class="disabled"></div>
+      
+      <div id="collectibles-container"></div>
+      
+      <div id="level-complete-modal">
+        <div class="modal-content">
+          <h2>LEVEL COMPLETE!</h2>
+          <p id="level-stats">Time: 0.00s | Deaths: 0 | Score: 0</p>
+          <p id="bonus-stats"></p>
+          <button id="next-level-btn">NEXT LEVEL</button>
+        </div>
+      </div>
+      
+      <div id="game-complete-modal">
+        <div class="modal-content">
+          <h2>MISSION COMPLETE!</h2>
+          <p id="final-stats">Total Time: 0.00s | Total Deaths: 0 | Total Score: 0</p>
+          <p id="final-bonus"></p>
+          <button id="restart-game-btn">PLAY AGAIN</button>
+        </div>
+      </div>
+      
+      <div id="pause-overlay">
+        <h2>GAME PAUSED</h2>
+        <p>Press P to continue</p>
+      </div>
+      
+      <div id="tutorial-overlay">
+        <div id="tutorial-content">
+          <h2>LASER ESCAPE</h2>
+          <div class="tutorial-section">
+            <p>Navigate the blue block through dangerous laser fields to reach the exit.</p>
+            <p><strong>NEW:</strong> You must collect ALL stars before reaching the exit!</p>
+          </div>
+          
+          <div class="tutorial-section">
+            <h3>HOW TO PLAY</h3>
+            <div class="tutorial-controls">
+              <div class="key">↑</div>
+              <div class="key">↓</div>
+              <div class="key">←</div>
+              <div class="key">→</div>
+            </div>
+            <p>Move your block</p>
+          </div>
+          
+          <div class="tutorial-section">
+            <h3>OBJECTIVES</h3>
+            <p>• Reach the green exit to complete each level</p>
+            <p>• Collect ALL gold stars before exiting</p>
+            <p>• Avoid red laser beams (any contact will kill you)</p>
+            <p>• Yellow gates block your path but won't kill you</p>
+          </div>
+          
+          <button id="start-game-btn">START GAME</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Game elements
+    const blueBlock = document.getElementById('blue-block');
+    const gameContainer = document.getElementById('game-container');
+    const exit = document.getElementById('exit');
+    const levelDisplay = document.getElementById('level-display');
+    const timeDisplay = document.getElementById('time-display');
+    const deathsDisplay = document.getElementById('deaths-display');
+    const scoreDisplay = document.getElementById('score-display');
+    const levelCompleteModal = document.getElementById('level-complete-modal');
+    const gameCompleteModal = document.getElementById('game-complete-modal');
+    const levelStats = document.getElementById('level-stats');
+    const finalStats = document.getElementById('final-stats');
+    const bonusStats = document.getElementById('bonus-stats');
+    const finalBonus = document.getElementById('final-bonus');
+    const nextLevelBtn = document.getElementById('next-level-btn');
+    const restartGameBtn = document.getElementById('restart-game-btn');
+    const pauseOverlay = document.getElementById('pause-overlay');
+    const collectiblesContainer = document.getElementById('collectibles-container');
+    const tutorialOverlay = document.getElementById('tutorial-overlay');
+    const startGameBtn = document.getElementById('start-game-btn');
+
+    // Game state
+    let blueBlockX = 20;
+    let blueBlockY = 280;
+    let currentLevel = 1;
+    let totalDeaths = 0;
+    let levelDeaths = 0;
+    let gameStartTime = 0;
+    let levelStartTime = 0;
+    let gameTime = 0;
+    let levelTime = 0;
+    let score = 0;
+    let levelScore = 0;
+    let gameActive = false;
+    let gamePaused = false;
+    let musicOn = false; // Audio is disabled
+    let animationFrameId;
+    let lasers = [];
+    let laserGates = [];
+    let particles = [];
+    let collectibles = [];
+    let totalCollectibles = 0;
+    let collectedCount = 0;
+    let levelCompleted = false;
+    let lastPosition = { x: 20, y: 280 };
+    
+    // Movement variables
+    let targetX = 20;
+    let targetY = 280;
+    const moveSpeed = 1.5;
+    const moveDistance = 20;
+
+    // Level configurations
+    const levels = [
+      { // Level 1 - Basic Training
+        name: "LASER TRAINING",
+        lasers: [
+          { type: 'vertical', left: 200, speed: 2 },
+          { type: 'vertical', left: 500, speed: 2, delay: 1 },
+          { type: 'horizontal', top: 100, speed: 1.5 },
+          { type: 'horizontal', top: 400, speed: 1.5, delay: 0.75 }
+        ],
+        exit: { right: 50, top: 280 },
+        collectibles: [
+          { x: 300, y: 150 },
+          { x: 400, y: 450 },
+          { x: 600, y: 300 }
+        ],
+        safeSpawn: { x: 20, y: 280 }
+      },
+      { // Level 2 - Security Breach
+        name: "SECURITY BREACH",
+        lasers: [
+          { type: 'vertical', left: 150, speed: 3 },
+          { type: 'vertical', left: 450, speed: 2 },
+          { type: 'horizontal', top: 50, speed: 2 },
+          { type: 'horizontal', top: 300, speed: 1.5 },
+          { type: 'horizontal', top: 450, speed: 2 }
+        ],
+        exit: { right: 50, top: 50 },
+        collectibles: [
+          { x: 200, y: 200 },
+          { x: 500, y: 100 },
+          { x: 400, y: 400 },
+          { x: 700, y: 500 }
+        ],
+        safeSpawn: { x: 20, y: 100 }
+      },
+      { // Level 3 - Final Challenge
+        name: "FINAL CHALLENGE",
+        lasers: [
+          { type: 'vertical', left: 100, speed: 4 },
+          { type: 'vertical', left: 300, speed: 3 },
+          { type: 'vertical', left: 500, speed: 2.5 },
+          { type: 'horizontal', top: 100, speed: 3 },
+          { type: 'horizontal', top: 250, speed: 2 },
+          { type: 'horizontal', top: 400, speed: 2.5 }
+        ],
+        exit: { right: 50, top: 450 },
+        collectibles: [
+          { x: 150, y: 500 },
+          { x: 350, y: 300 },
+          { x: 550, y: 150 },
+          { x: 700, y: 400 },
+          { x: 400, y: 550 }
+        ],
+        safeSpawn: { x: 20, y: 280 }
+      },
+      { // Level 4 - Crossfire
+        name: "CROSSFIRE",
+        lasers: [
+          { type: 'horizontal', top: 150, speed: 2 },
+          { type: 'horizontal', top: 450, speed: 2, delay: 1 },
+          { type: 'vertical', left: 300, speed: 2 },
+          { type: 'vertical', left: 500, speed: 2, delay: 0.5 }
+        ],
+        exit: { right: 50, top: 280 },
+        collectibles: [
+          { x: 300, y: 300 },
+          { x: 500, y: 200 },
+          { x: 200, y: 400 },
+          { x: 600, y: 400 },
+          { x: 400, y: 500 }
+        ],
+        safeSpawn: { x: 20, y: 280 },
+        gates: [
+          { left: 300, top: 200, width: 100, height: 100 }
+        ]
+      },
+      { // Level 5 - The Gauntlet
+        name: "THE GAUNTLET",
+        lasers: [
+          { type: 'vertical', left: 150, speed: 4 },
+          { type: 'vertical', left: 300, speed: 3, delay: 0.5 },
+          { type: 'vertical', left: 450, speed: 2.5, delay: 1 },
+          { type: 'vertical', left: 600, speed: 3.5, delay: 0.75 },
+          { type: 'horizontal', top: 100, speed: 2.5 },
+          { type: 'horizontal', top: 300, speed: 2, delay: 0.5 },
+          { type: 'horizontal', top: 500, speed: 3, delay: 0.25 }
+        ],
+        exit: { right: 50, top: 50 },
+        collectibles: [
+          { x: 200, y: 200 },
+          { x: 400, y: 200 },
+          { x: 600, y: 200 },
+          { x: 200, y: 400 },
+          { x: 400, y: 400 },
+          { x: 600, y: 400 }
+        ],
+        safeSpawn: { x: 20, y: 150 }
+      },
+      { // Level 6 - Spiral Maze
+        name: "SPIRAL MAZE",
+        lasers: [
+          { type: 'vertical', left: 400, speed: 3 },
+          { type: 'horizontal', top: 100, speed: 2 },
+          { type: 'horizontal', top: 500, speed: 2, delay: 1 }
+        ],
+        exit: { right: 50, top: 280 },
+        collectibles: [
+          { x: 200, y: 150 },
+          { x: 600, y: 150 },
+          { x: 200, y: 450 },
+          { x: 600, y: 450 },
+          { x: 400, y: 50 }
+        ],
+        safeSpawn: { x: 20, y: 280 },
+        gates: [
+          { left: 200, top: 200, width: 400, height: 200 }
+        ]
+      },
+      { // Level 7 - Laser Storm
+        name: "LASER STORM",
+        lasers: [
+          { type: 'vertical', left: 100, speed: 5 },
+          { type: 'vertical', left: 250, speed: 4, delay: 0.5 },
+          { type: 'vertical', left: 400, speed: 3.5, delay: 1 },
+          { type: 'vertical', left: 550, speed: 4.5, delay: 0.75 },
+          { type: 'vertical', left: 700, speed: 5.5, delay: 0.25 },
+          { type: 'horizontal', top: 50, speed: 3 },
+          { type: 'horizontal', top: 200, speed: 2.5, delay: 0.5 },
+          { type: 'horizontal', top: 350, speed: 3.5, delay: 0.75 },
+          { type: 'horizontal', top: 500, speed: 4, delay: 0.25 }
+        ],
+        exit: { right: 50, top: 550 },
+        collectibles: [
+          { x: 150, y: 100 },
+          { x: 400, y: 100 },
+          { x: 650, y: 100 },
+          { x: 150, y: 300 },
+          { x: 650, y: 300 },
+          { x: 150, y: 500 },
+          { x: 400, y: 500 },
+          { x: 650, y: 500 }
+        ],
+        safeSpawn: { x: 20, y: 550 }
+      },
+      { // Level 8 - Final Showdown
+        name: "FINAL SHOWDOWN",
+        lasers: [
+          { type: 'vertical', left: 200, speed: 4, delay: 1 },
+          { type: 'vertical', left: 600, speed: 5, delay: 3 },
+          { type: 'vertical', left: 300, speed: 3 },
+          { type: 'vertical', left: 500, speed: 3, delay: 1.5 },
+          { type: 'horizontal', top: 300, speed: 2.5 }
+        ],
+        exit: { right: 50, top: 280 },
+        collectibles: [
+          { x: 150, y: 100 },
+          { x: 650, y: 100 },
+          { x: 400, y: 50 },
+          { x: 150, y: 500 },
+          { x: 650, y: 500 },
+          { x: 400, y: 150 },
+          { x: 400, y: 450 }
+        ],
+        safeSpawn: { x: 20, y: 50 },
+        gates: [
+          { left: 300, top: 200, width: 200, height: 200 }
+        ]
+      }
+    ];
+
+    // Initialize the game
+    function initGame() {
+      gameStartTime = Date.now();
+      levelStartTime = Date.now();
+      totalDeaths = 0;
+      currentLevel = 1;
+      score = 0;
+      gameActive = true;
+      gamePaused = false;
+      levelCompleted = false;
+      
+      updateHUD();
+      initializeLevel(currentLevel);
+      gameLoop();
+      
+      gameContainer.focus();
+    }
+
+    // Initialize a level
+    function initializeLevel(level) {
+      levelCompleted = false;
+      gameContainer.querySelectorAll('.laser, .particle, .collectible-star, .laser-gate').forEach(el => el.remove());
+      lasers = [];
+      laserGates = [];
+      particles = [];
+      collectibles = [];
+      levelDeaths = 0;
+      levelScore = 0;
+      collectedCount = 0;
+      levelStartTime = Date.now();
+      
+      const levelConfig = levels[level - 1];
+      totalCollectibles = levelConfig.collectibles.length;
+      
+      targetX = levelConfig.safeSpawn.x;
+      targetY = levelConfig.safeSpawn.y;
+      lastPosition = { x: targetX, y: targetY };
+      
+      exit.style.right = `${levelConfig.exit.right}px`;
+      exit.style.top = `${levelConfig.exit.top}px`;
+      exit.classList.add('disabled');
+      
+      // Create lasers
+      levelConfig.lasers.forEach(laser => {
+        const laserEl = document.createElement('div');
+        laserEl.classList.add('laser');
+        
+        if (laser.type === 'vertical') {
+          laserEl.classList.add('vertical-laser');
+          laserEl.style.left = `${laser.left}px`;
+          laserEl.style.top = '0px';
+          laserEl.style.height = '100%';
+          laserEl.style.animation = `moveVertical ${laser.speed}s linear infinite`;
+          if (laser.delay) {
+            laserEl.style.animationDelay = `-${laser.delay}s`;
+          }
+        } 
+        else if (laser.type === 'horizontal') {
+          laserEl.classList.add('horizontal-laser');
+          laserEl.style.left = '0px';
+          laserEl.style.top = `${laser.top}px`;
+          laserEl.style.width = '100%';
+          laserEl.style.animation = `moveHorizontal ${laser.speed}s linear infinite`;
+          if (laser.delay) {
+            laserEl.style.animationDelay = `-${laser.delay}s`;
+          }
+        }
+        else if (laser.type === 'rotating') {
+          laserEl.classList.add('rotating-laser');
+          laserEl.style.left = `${laser.left}px`;
+          laserEl.style.top = `${laser.top}px`;
+          laserEl.style.animation = `rotate ${laser.speed}s linear infinite`;
+          if (laser.delay) {
+            laserEl.style.animationDelay = `-${laser.delay}s`;
+          }
+        }
+        
+        gameContainer.appendChild(laserEl);
+        lasers.push(laserEl);
+      });
+      
+      // Create laser gates if they exist in the level
+      if (levelConfig.gates) {
+        levelConfig.gates.forEach(gate => {
+          const gateEl = document.createElement('div');
+          gateEl.classList.add('laser-gate');
+          gateEl.style.left = `${gate.left}px`;
+          gateEl.style.top = `${gate.top}px`;
+          gateEl.style.width = `${gate.width}px`;
+          gateEl.style.height = `${gate.height}px`;
+          gameContainer.appendChild(gateEl);
+          laserGates.push(gateEl);
+        });
+      }
+      
+      // Create collectibles
+      levelConfig.collectibles.forEach((collectible, index) => {
+        const star = document.createElement('div');
+        star.classList.add('collectible-star');
+        star.style.left = `${collectible.x}px`;
+        star.style.top = `${collectible.y}px`;
+        star.dataset.collected = "false";
+        star.dataset.index = index;
+        gameContainer.appendChild(star);
+        collectibles.push(star);
+      });
+      
+      updateCollectiblesDisplay();
+      levelDisplay.textContent = `LEVEL: ${level} - ${levelConfig.name}`;
+      resetPlayer();
+    }
+
+    // Reset player position
+    function resetPlayer() {
+      const levelConfig = levels[currentLevel - 1];
+      blueBlockX = levelConfig.safeSpawn.x;
+      blueBlockY = levelConfig.safeSpawn.y;
+      targetX = blueBlockX;
+      targetY = blueBlockY;
+      lastPosition = { x: blueBlockX, y: blueBlockY };
+      
+      blueBlock.style.left = `${blueBlockX}px`;
+      blueBlock.style.top = `${blueBlockY}px`;
+    }
+
+    function updateCollectiblesDisplay() {
+      collectiblesContainer.innerHTML = '';
+      
+      for (let i = 0; i < totalCollectibles; i++) {
+        const collectible = document.createElement('div');
+        collectible.classList.add('collectible');
+        if (i < collectedCount) {
+          collectible.textContent = '★';
+        } else {
+          collectible.classList.add('empty');
+        }
+        collectiblesContainer.appendChild(collectible);
+      }
+      
+      if (collectedCount >= totalCollectibles) {
+        exit.classList.remove('disabled');
+      } else {
+        exit.classList.add('disabled');
+      }
+    }
+
+    // Main game loop
+    function gameLoop() {
+      if (gamePaused || !gameActive || levelCompleted) return;
+      
+      const prevX = blueBlockX;
+      const prevY = blueBlockY;
+      
+      // Smooth movement
+      blueBlockX += (targetX - blueBlockX) * moveSpeed;
+      blueBlockY += (targetY - blueBlockY) * moveSpeed;
+      
+      // Check for gate collisions and push player back if needed
+      checkGateCollisions();
+      
+      blueBlock.style.left = `${blueBlockX}px`;
+      blueBlock.style.top = `${blueBlockY}px`;
+      
+      updateGameTime();
+      updateParticles();
+      checkCollisions(prevX, prevY);
+      checkCollectibles();
+      
+      animationFrameId = requestAnimationFrame(gameLoop);
+    }
+
+    // New function to handle gate collisions (push player back)
+    function checkGateCollisions() {
+      const playerRect = {
+        left: blueBlockX,
+        top: blueBlockY,
+        right: blueBlockX + 40,
+        bottom: blueBlockY + 40
+      };
+
+      for (const gate of laserGates) {
+        const gateRect = gate.getBoundingClientRect();
+        const containerRect = gameContainer.getBoundingClientRect();
+        
+        const adjustedGateRect = {
+          left: gateRect.left - containerRect.left,
+          top: gateRect.top - containerRect.top,
+          right: gateRect.right - containerRect.left,
+          bottom: gateRect.bottom - containerRect.top
+        };
+
+        if (rectsOverlap(playerRect, adjustedGateRect)) {
+          // Push player back to last safe position
+          blueBlockX = lastPosition.x;
+          blueBlockY = lastPosition.y;
+          targetX = lastPosition.x;
+          targetY = lastPosition.y;
+          return;
+        }
+      }
+      
+      // Update last safe position if not colliding with gates
+      lastPosition = { x: blueBlockX, y: blueBlockY };
+    }
+
+    function updateGameTime() {
+      const now = Date.now();
+      gameTime = (now - gameStartTime) / 1000;
+      levelTime = (now - levelStartTime) / 1000;
+      timeDisplay.textContent = `TIME: ${gameTime.toFixed(2)}`;
+    }
+
+    function updateParticles() {
+      particles.forEach((particle, index) => {
+        const vx = parseFloat(particle.dataset.vx);
+        const vy = parseFloat(particle.dataset.vy);
+        const life = parseFloat(particle.dataset.life) - 1;
+        
+        if (life <= 0) {
+          particle.remove();
+          particles.splice(index, 1);
+        } else {
+          particle.style.left = `${parseFloat(particle.style.left) + vx}px`;
+          particle.style.top = `${parseFloat(particle.style.top) + vy}px`;
+          particle.style.opacity = life / 60;
+          particle.dataset.life = life;
+        }
+      });
+    }
+
+    function updateHUD() {
+      deathsDisplay.textContent = `DEATHS: ${totalDeaths}`;
+      scoreDisplay.textContent = `SCORE: ${score}`;
+    }
+
+    // Collision detection (now only checks lasers and exit)
+    function checkCollisions(prevX, prevY) {
+      const playerRect = {
+        left: blueBlockX,
+        top: blueBlockY,
+        right: blueBlockX + 40,
+        bottom: blueBlockY + 40
+      };
+
+      // Check exit
+      const exitRect = {
+        left: 800 - parseInt(exit.style.right) - 30,
+        top: parseInt(exit.style.top),
+        right: 800 - parseInt(exit.style.right) + 30,
+        bottom: parseInt(exit.style.top) + 60
+      };
+
+      if (rectsOverlap(playerRect, exitRect)) {
+        if (collectedCount >= totalCollectibles) {
+          completeLevel();
+        }
+        return;
+      }
+
+      // Check all laser paths (entire path is deadly)
+      for (const laser of lasers) {
+        const laserRect = laser.getBoundingClientRect();
+        const containerRect = gameContainer.getBoundingClientRect();
+        
+        const adjustedLaserRect = {
+          left: laserRect.left - containerRect.left,
+          top: laserRect.top - containerRect.top,
+          right: laserRect.right - containerRect.left,
+          bottom: laserRect.bottom - containerRect.top
+        };
+
+        if (rectsOverlap(playerRect, adjustedLaserRect)) {
+          playerDeath();
+          return;
+        }
+      }
+    }
+
+    function checkCollectibles() {
+      const playerRect = {
+        left: blueBlockX,
+        top: blueBlockY,
+        right: blueBlockX + 40,
+        bottom: blueBlockY + 40
+      };
+      
+      collectibles.forEach(collectible => {
+        if (collectible.dataset.collected === "false") {
+          const collectibleRect = {
+            left: parseFloat(collectible.style.left),
+            top: parseFloat(collectible.style.top),
+            right: parseFloat(collectible.style.left) + 20,
+            bottom: parseFloat(collectible.style.top) + 20
+          };
+          
+          if (rectsOverlap(playerRect, collectibleRect)) {
+            collectible.dataset.collected = "true";
+            collectible.style.display = "none";
+            collectedCount++;
+            levelScore += 100;
+            score += 100;
+            
+            updateCollectiblesDisplay();
+            updateHUD();
+            
+            createParticles(
+              parseFloat(collectible.style.left) + 10,
+              parseFloat(collectible.style.top) + 10,
+              15,
+              'gold'
+            );
+          }
+        }
+      });
+    }
+
+    function rectsOverlap(rect1, rect2) {
+      return !(
+        rect1.right < rect2.left || 
+        rect1.left > rect2.right || 
+        rect1.bottom < rect2.top || 
+        rect1.top > rect2.bottom
+      );
+    }
+
+    function playerDeath() {
+      createParticles(blueBlockX + 20, blueBlockY + 20, 25, '#4285F4');
+      
+      totalDeaths++;
+      levelDeaths++;
+      updateHUD();
+      resetPlayer();
+    }
+
+    function createParticles(x, y, count, color) {
+      for (let i = 0; i < count; i++) {
+        const particle = document.createElement('div');
+        particle.classList.add('particle');
+        particle.style.left = `${x}px`;
+        particle.style.top = `${y}px`;
+        particle.style.backgroundColor = color;
+        
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1 + Math.random() * 3;
+        const vx = Math.cos(angle) * speed;
+        const vy = Math.sin(angle) * speed;
+        
+        particle.dataset.vx = vx;
+        particle.dataset.vy = vy;
+        particle.dataset.life = 30 + Math.random() * 30;
+        
+        gameContainer.appendChild(particle);
+        particles.push(particle);
+      }
+    }
+
+    function completeLevel() {
+      levelCompleted = true;
+      
+      gameActive = false;
+      cancelAnimationFrame(animationFrameId);
+      
+      const timeBonus = Math.max(0, 500 - Math.floor(levelTime * 5));
+      const collectionBonus = collectedCount * 200;
+      const perfectBonus = (collectedCount === totalCollectibles && levelDeaths === 0) ? 1000 : 0;
+      
+      const totalBonus = timeBonus + collectionBonus + perfectBonus;
+      levelScore += totalBonus;
+      score += totalBonus;
+      updateHUD();
+      
+      levelStats.textContent = `Time: ${levelTime.toFixed(2)}s | Deaths: ${levelDeaths} | Score: ${levelScore}`;
+      bonusStats.textContent = `Time Bonus: ${timeBonus} | Collection Bonus: ${collectionBonus} ${perfectBonus > 0 ? '| Perfect Bonus: 1000' : ''}`;
+      
+      if (currentLevel >= levels.length) {
+        finalStats.textContent = `Total Time: ${gameTime.toFixed(2)}s | Total Deaths: ${totalDeaths} | Total Score: ${score}`;
+        const timeRank = getTimeRank(gameTime);
+        const deathRank = getDeathRank(totalDeaths);
+        const scoreRank = getScoreRank(score);
+        finalBonus.textContent = `Time Rank: ${timeRank} | Death Rank: ${deathRank} | Score Rank: ${scoreRank}`;
+        gameCompleteModal.style.display = 'flex';
+      } else {
+        levelCompleteModal.style.display = 'flex';
+      }
+    }
+
+    function getTimeRank(time) {
+      if (time < 120) return "⚡ Lightning Fast";
+      if (time < 180) return "🏎️ Speedy";
+      if (time < 240) return "🚶 Steady";
+      return "🐢 Slowpoke";
+    }
+
+    function getDeathRank(deaths) {
+      if (deaths === 0) return "👑 Flawless";
+      if (deaths < 10) return "🎯 Precise";
+      if (deaths < 20) return "💪 Persistent";
+      return "💀 Reckless";
+    }
+
+    function getScoreRank(score) {
+      if (score > 10000) return "🌟 Legendary";
+      if (score > 8000) return "💎 Diamond";
+      if (score > 6000) return "🥇 Gold";
+      if (score > 4000) return "🥈 Silver";
+      return "🥉 Bronze";
+    }
+
+    function nextLevel() {
+      if (levelCompleted) {
+        currentLevel++;
+        levelCompleteModal.style.display = 'none';
+        gameActive = true;
+        initializeLevel(currentLevel);
+        gameLoop();
+      }
+    }
+
+    function restartGame() {
+      gameCompleteModal.style.display = 'none';
+      levelCompleteModal.style.display = 'none';
+      initGame();
+    }
+
+    function togglePause() {
+      gamePaused = !gamePaused;
+      if (gamePaused) {
+        cancelAnimationFrame(animationFrameId);
+        pauseOverlay.style.display = 'flex';
+      } else {
+        pauseOverlay.style.display = 'none';
+        gameLoop();
+      }
+    }
+
+    function showTutorial() {
+      tutorialOverlay.style.display = 'flex';
+      gamePaused = true;
+      cancelAnimationFrame(animationFrameId);
+    }
+
+    function hideTutorial() {
+      tutorialOverlay.style.display = 'none';
+      gamePaused = false;
+      if (gameActive) gameLoop();
+    }
+
+    // Event listeners
+    gameContainer.addEventListener('keydown', (e) => {
+      if (!gameActive && !gamePaused) return;
+      
+      switch (e.key) {
+        case 'ArrowUp': targetY = Math.max(0, targetY - moveDistance); break;
+        case 'ArrowDown': targetY = Math.min(560, targetY + moveDistance); break;
+        case 'ArrowLeft': targetX = Math.max(0, targetX - moveDistance); break;
+        case 'ArrowRight': targetX = Math.min(760, targetX + moveDistance); break;
+        case 'r': case 'R': resetPlayer(); break;
+        case 'p': case 'P': togglePause(); break;
+        case 'h': case 'H': showTutorial(); break;
+      }
+    });
+
+    nextLevelBtn.addEventListener('click', nextLevel);
+    restartGameBtn.addEventListener('click', restartGame);
+    startGameBtn.addEventListener('click', () => {
+      hideTutorial();
+      initGame();
+    });
+
+    // Start with tutorial
+    showTutorial();
+  </script>
+</body>
+</html>

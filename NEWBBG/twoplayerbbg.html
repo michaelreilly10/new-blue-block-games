@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dot Dodge Multiplayer</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: white; 
+            font-family: Arial, sans-serif; /* Set default font */
+        }
+        canvas { 
+            display: block; 
+            background: white; 
+        }
+        #score1, #score2, #highScore, #multiplier1, #multiplier2 {
+            position: absolute;
+            color: #00aaff; /* Bright blue */
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        #score1 { top: 10px; left: 10px; }
+        #score2 { top: 10px; right: 10px; }
+        #highScore { top: 10px; left: 50%; transform: translateX(-50%); }
+        #multiplier1 { top: 40px; left: 10px; }
+        #multiplier2 { top: 40px; right: 10px; }
+
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            display: none;
+            color: #333; /* Dark gray for better contrast */
+            font-family: Arial, sans-serif;
+        }
+
+        #gameOver h1 {
+            font-size: 60px;
+            margin: 0;
+            animation: pulse 1.5s infinite;
+            color: #ff4444; /* Red for emphasis */
+        }
+
+        #gameOver p {
+            font-size: 24px;
+            margin: 10px 0;
+            color: #333; /* Dark gray */
+        }
+
+        #gameOver button {
+            font-size: 24px;
+            padding: 10px 20px;
+            margin: 10px;
+            background: #00aaff;
+            border: none;
+            color: white;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+
+        #gameOver button:hover {
+            background: #ffaa00;
+        }
+
+        #newHighScore {
+            font-size: 30px;
+            color: #ffaa00; /* Bright orange */
+            display: none;
+            margin: 10px 0;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        /* Dark mode styles */
+        body.dark-mode { background: black; }
+        body.dark-mode canvas { background: black; }
+        body.dark-mode #score1,
+        body.dark-mode #score2,
+        body.dark-mode #highScore,
+        body.dark-mode #multiplier1,
+        body.dark-mode #multiplier2,
+        body.dark-mode #gameOver h1,
+        body.dark-mode #gameOver p,
+        body.dark-mode #newHighScore {
+            color: #ffffff; /* White text for dark mode */
+        }
+    </style>
+</head>
+<body>
+    <div id="score1">Player 1: 0</div>
+    <div id="score2">Player 2: 0</div>
+    <div id="highScore">High Score: 0</div>
+    <div id="multiplier1">Multiplier: x1</div>
+    <div id="multiplier2">Multiplier: x1</div>
+    <div id="gameOver">
+        <h1 id="winnerText">Player X Wins!</h1>
+        <p>Player 1 Score: <span id="finalScore1">0</span></p>
+        <p>Player 2 Score: <span id="finalScore2">0</span></p>
+        <div id="newHighScore">NEW HIGH SCORE!</div>
+        <button id="restart">Restart</button>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const score1Display = document.getElementById("score1");
+        const score2Display = document.getElementById("score2");
+        const highScoreDisplay = document.getElementById("highScore");
+        const multiplier1Display = document.getElementById("multiplier1");
+        const multiplier2Display = document.getElementById("multiplier2");
+        const gameOverScreen = document.getElementById("gameOver");
+        const winnerText = document.getElementById("winnerText");
+        const finalScore1Display = document.getElementById("finalScore1");
+        const finalScore2Display = document.getElementById("finalScore2");
+        const newHighScoreDisplay = document.getElementById("newHighScore");
+        const restartButton = document.getElementById("restart");
+        const body = document.body;
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // SWAPPED PLAYER STARTING POSITIONS
+        let player1 = { 
+            x: (3 * canvas.width) / 4,  // Changed from left to right side
+            y: canvas.height - 50, 
+            size: 20, 
+            speed: 0, 
+            maxSpeed: 7, 
+            acceleration: 0.2, 
+            deceleration: 0.1, 
+            attachedBlocks: [], 
+            score: 0, 
+            multiplier: 1,
+            isAlive: true,
+            timeAlive: 0 // Track how long Player 1 has been alive
+        };
+
+        let player2 = { 
+            x: canvas.width / 4,  // Changed from right to left side
+            y: canvas.height - 50, 
+            size: 20, 
+            speed: 0, 
+            maxSpeed: 7, 
+            acceleration: 0.2, 
+            deceleration: 0.1, 
+            attachedBlocks: [], 
+            score: 0, 
+            multiplier: 1,
+            isAlive: true,
+            timeAlive: 0 // Track how long Player 2 has been alive
+        };
+
+        let obstacles = [];
+        let blueBlocks = [];
+        let greenBlocks = []; // New array for green blocks
+        let keys = {};
+        let gameRunning = true;
+        let highScore = localStorage.getItem("highScore") || 0;
+        let difficultyMultiplier = 1;
+        let speedIncreaseRate = 0.005;
+        let isPaused = false;
+        let shakeIntensity = 0;
+        let isDarkMode = false;
+
+        highScoreDisplay.textContent = "High Score: " + highScore;
+
+        window.addEventListener("keydown", (e) => {
+            if (e.key === " ") { // Spacebar
+                isPaused = !isPaused; // Toggle pause
+            } else if (e.key === "l" || e.key === "L") { // Toggle dark mode with L key
+                isDarkMode = !isDarkMode;
+                body.classList.toggle("dark-mode", isDarkMode);
+            } else {
+                keys[e.key] = true;
+            }
+        });
+        window.addEventListener("keyup", (e) => keys[e.key] = false);
+
+        function checkCollision(a, b) {
+            const dx = a.x - b.x;
+            const dy = a.y - b.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            return distance < a.size / 2 + b.size / 2;
+        }
+
+        function attachBlockToPlayer(player, block) {
+            let attachX = block.x - player.x;
+            let attachY = block.y - player.y;
+            player.attachedBlocks.push({ x: attachX, y: attachY, size: block.size });
+        }
+
+        function shakeScreen() {
+            shakeIntensity = 10;
+        }
+
+        function update() {
+            if (isPaused) return;
+
+            // Update time alive for both players
+            if (player1.isAlive) player1.timeAlive++;
+            if (player2.isAlive) player2.timeAlive++;
+
+            // Player 1 movement (Arrow keys)
+            if (player1.isAlive) {
+                if (keys["ArrowLeft"]) {
+                    player1.speed = Math.max(player1.speed - player1.acceleration, -player1.maxSpeed);
+                } else if (keys["ArrowRight"]) {
+                    player1.speed = Math.min(player1.speed + player1.acceleration, player1.maxSpeed);
+                } else {
+                    if (player1.speed > 0) {
+                        player1.speed = Math.max(player1.speed - player1.deceleration, 0);
+                    } else if (player1.speed < 0) {
+                        player1.speed = Math.min(player1.speed + player1.deceleration, 0);
+                    }
+                }
+                player1.x += player1.speed;
+
+                // Keep Player 1 within canvas bounds
+                if (player1.x < 0) player1.x = 0;
+                if (player1.x > canvas.width - player1.size) player1.x = canvas.width - player1.size;
+            }
+
+            // Player 2 movement (A and D keys)
+            if (player2.isAlive) {
+                if (keys["a"] || keys["A"]) {
+                    player2.speed = Math.max(player2.speed - player2.acceleration, -player2.maxSpeed);
+                } else if (keys["d"] || keys["D"]) {
+                    player2.speed = Math.min(player2.speed + player2.acceleration, player2.maxSpeed);
+                } else {
+                    if (player2.speed > 0) {
+                        player2.speed = Math.max(player2.speed - player2.deceleration, 0);
+                    } else if (player2.speed < 0) {
+                        player2.speed = Math.min(player2.speed + player2.deceleration, 0);
+                    }
+                }
+                player2.x += player2.speed;
+
+                // Keep Player 2 within canvas bounds
+                if (player2.x < 0) player2.x = 0;
+                if (player2.x > canvas.width - player2.size) player2.x = canvas.width - player2.size;
+            }
+
+            // Update obstacles and check collisions
+            obstacles.forEach((obs, index) => {
+                obs.y += obs.speed * difficultyMultiplier;
+
+                if (obs.type === "zigzag") {
+                    obs.x += Math.sin(obs.y / 20) * 3;
+                } else if (obs.type === "spinningTriangle") {
+                    obs.x += Math.sin(obs.y / 30) * 4;
+                    obs.rotation += 0.1;
+                }
+
+                if (obs.y > canvas.height) {
+                    if (obs.type === "bomb") shakeScreen();
+                    obstacles.splice(index, 1);
+                    if (player1.isAlive) player1.score += player1.multiplier;
+                    if (player2.isAlive) player2.score += player2.multiplier;
+                    score1Display.textContent = "Player 1: " + player1.score;
+                    score2Display.textContent = "Player 2: " + player2.score;
+                    difficultyMultiplier += speedIncreaseRate;
+                }
+
+                // Check collisions for Player 1
+                if (player1.isAlive && checkCollision(obs, player1)) {
+                    player1.isAlive = false; // Player 1 loses
+                }
+                player1.attachedBlocks.forEach(block => {
+                    let hitbox = { x: player1.x + block.x, y: player1.y + block.y, size: block.size };
+                    if (player1.isAlive && checkCollision(obs, hitbox)) {
+                        player1.isAlive = false; // Player 1 loses
+                    }
+                });
+
+                // Check collisions for Player 2
+                if (player2.isAlive && checkCollision(obs, player2)) {
+                    player2.isAlive = false; // Player 2 loses
+                }
+                player2.attachedBlocks.forEach(block => {
+                    let hitbox = { x: player2.x + block.x, y: player2.y + block.y, size: block.size };
+                    if (player2.isAlive && checkCollision(obs, hitbox)) {
+                        player2.isAlive = false; // Player 2 loses
+                    }
+                });
+            });
+
+            // Update blue blocks (for Player 1)
+            blueBlocks.forEach((block, index) => {
+                block.y += block.speed;
+
+                if (block.y > canvas.height) {
+                    blueBlocks.splice(index, 1);
+                    return;
+                }
+
+                // Check for Player 1 collecting blue blocks
+                if (player1.isAlive) {
+                    let collected = checkCollision(block, player1) || 
+                                   player1.attachedBlocks.some(attachedBlock => 
+                                       checkCollision(block, { 
+                                           x: player1.x + attachedBlock.x, 
+                                           y: player1.y + attachedBlock.y, 
+                                           size: attachedBlock.size 
+                                       })
+                                   );
+
+                    if (collected) {
+                        attachBlockToPlayer(player1, block);
+                        blueBlocks.splice(index, 1);
+                        player1.multiplier += 1;
+                        multiplier1Display.textContent = "Multiplier: x" + player1.multiplier;
+                    }
+                }
+            });
+
+            // Update green blocks (for Player 2)
+            greenBlocks.forEach((block, index) => {
+                block.y += block.speed;
+
+                if (block.y > canvas.height) {
+                    greenBlocks.splice(index, 1);
+                    return;
+                }
+
+                // Check for Player 2 collecting green blocks
+                if (player2.isAlive) {
+                    let collected = checkCollision(block, player2) || 
+                                   player2.attachedBlocks.some(attachedBlock => 
+                                       checkCollision(block, { 
+                                           x: player2.x + attachedBlock.x, 
+                                           y: player2.y + attachedBlock.y, 
+                                           size: attachedBlock.size 
+                                       })
+                                   );
+
+                    if (collected) {
+                        attachBlockToPlayer(player2, block);
+                        greenBlocks.splice(index, 1);
+                        player2.multiplier += 1;
+                        multiplier2Display.textContent = "Multiplier: x" + player2.multiplier;
+                    }
+                }
+
+                // Check if green block touches blue block
+                blueBlocks.forEach((blueBlock, blueIndex) => {
+                    if (checkCollision(block, blueBlock)) {
+                        // Reduce Player 1's multiplier by 1
+                        player1.multiplier = Math.max(player1.multiplier - 1, 1); // Ensure multiplier doesn't go below 1
+                        multiplier1Display.textContent = "Multiplier: x" + player1.multiplier;
+                        // Remove both blocks
+                        greenBlocks.splice(index, 1);
+                        blueBlocks.splice(blueIndex, 1);
+                    }
+                });
+            });
+
+            // Spawn new obstacles, blue blocks, and green blocks
+            if (Math.random() < 0.02 * difficultyMultiplier) {
+                let size = 40 + Math.random() * 30;
+                let speed = 3 + Math.random() * 4;
+                let type = Math.random() < 0.3 ? "zigzag" : 
+                           Math.random() < 0.5 ? "spinningTriangle" : 
+                           Math.random() < 0.7 ? "bomb" : "normal";
+                obstacles.push({ x: Math.random() * (canvas.width - size), y: 0, size, speed, type, rotation: 0 });
+            }
+
+            if (Math.random() < 0.005) {
+                blueBlocks.push({ x: Math.random() * (canvas.width - 20), y: 0, size: 20, speed: 3 });
+            }
+
+            if (Math.random() < 0.005) {
+                greenBlocks.push({ x: Math.random() * (canvas.width - 20), y: 0, size: 20, speed: 3 });
+            }
+
+            // Check if both players are dead
+            if (!player1.isAlive && !player2.isAlive) {
+                gameRunning = false;
+                determineWinner();
+            }
+        }
+
+        function determineWinner() {
+            let winner = null;
+
+            // Compare scores
+            if (player1.score > player2.score) {
+                winner = "Player 1";
+            } else if (player2.score > player1.score) {
+                winner = "Player 2";
+            } else {
+                // If scores are tied, compare time alive
+                if (player1.timeAlive > player2.timeAlive) {
+                    winner = "Player 1";
+                } else if (player2.timeAlive > player1.timeAlive) {
+                    winner = "Player 2";
+                } else {
+                    winner = "It's a tie!";
+                }
+            }
+
+            // Update winner text
+            winnerText.textContent = winner === "It's a tie!" ? "It's a tie!" : `${winner} Wins!`;
+        }
+
+        function draw() {
+            if (shakeIntensity > 0) {
+                ctx.setTransform(1, 0, 0, 1, (Math.random() - 0.5) * shakeIntensity, (Math.random() - 0.5) * shakeIntensity);
+                shakeIntensity -= 0.5;
+            } else {
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Player 1 if alive
+            if (player1.isAlive) {
+                ctx.fillStyle = "blue";
+                ctx.fillRect(player1.x, player1.y, player1.size, player1.size);
+                player1.attachedBlocks.forEach(block => {
+                    ctx.fillRect(player1.x + block.x, player1.y + block.y, block.size, block.size);
+                });
+            }
+
+            // Draw Player 2 if alive
+            if (player2.isAlive) {
+                ctx.fillStyle = "green";
+                ctx.fillRect(player2.x, player2.y, player2.size, player2.size);
+                player2.attachedBlocks.forEach(block => {
+                    ctx.fillRect(player2.x + block.x, player2.y + block.y, block.size, block.size);
+                });
+            }
+
+            // Draw obstacles
+            obstacles.forEach(obs => {
+                ctx.fillStyle = obs.type === "zigzag" ? "purple" : 
+                                obs.type === "spinningTriangle" ? "silver" : 
+                                obs.type === "bomb" ? "black" : "red";
+                if (obs.type === "spinningTriangle") {
+                    ctx.save();
+                    ctx.translate(obs.x + obs.size / 2, obs.y + obs.size / 2);
+                    ctx.rotate(obs.rotation);
+                    ctx.beginPath();
+                    ctx.moveTo(-obs.size / 2, obs.size / 2);
+                    ctx.lineTo(0, -obs.size / 2);
+                    ctx.lineTo(obs.size / 2, obs.size / 2);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                } else if (obs.type === "bomb") {
+                    ctx.save();
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = "red";
+                    ctx.beginPath();
+                    ctx.arc(obs.x, obs.y, obs.size / 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                } else {
+                    ctx.fillRect(obs.x, obs.y, obs.size, obs.size);
+                }
+            });
+
+            // Draw blue blocks
+            blueBlocks.forEach(block => {
+                ctx.fillStyle = "blue";
+                ctx.fillRect(block.x, block.y, block.size, block.size);
+            });
+
+            // Draw green blocks
+            greenBlocks.forEach(block => {
+                ctx.fillStyle = "green";
+                ctx.fillRect(block.x, block.y, block.size, block.size);
+            });
+        }
+
+        function gameLoop() {
+            if (gameRunning) {
+                if (!isPaused) {
+                    update();
+                    draw();
+                }
+                requestAnimationFrame(gameLoop);
+            } else {
+                if (player1.score > highScore || player2.score > highScore) {
+                    highScore = Math.max(player1.score, player2.score);
+                    localStorage.setItem("highScore", highScore);
+                    highScoreDisplay.textContent = "High Score: " + highScore;
+                    newHighScoreDisplay.style.display = "block";
+                }
+                finalScore1Display.textContent = player1.score;
+                finalScore2Display.textContent = player2.score;
+                gameOverScreen.style.display = "block";
+            }
+        }
+
+        restartButton.addEventListener("click", () => {
+            location.reload();
+        });
+
+        gameLoop();
+    </script>
+</body>
+</html>
